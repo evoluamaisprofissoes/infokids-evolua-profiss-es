@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coletor WASD — Info Kid</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  :root{--navy:#0a1628;--purple:#a855f7;--yellow:#ffd84d;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--navy);font-family:'Nunito',sans-serif;color:#f0f4ff;
+    display:flex;flex-direction:column;align-items:center;min-height:100vh;}
+  header{width:100%;display:flex;align-items:center;justify-content:space-between;
+    padding:12px 20px;background:rgba(255,255,255,0.04);border-bottom:1px solid rgba(255,255,255,0.07);}
+  .back{text-decoration:none;color:var(--purple);font-weight:800;}
+  .htitle{font-family:'Fredoka One';font-size:1.3rem;color:var(--purple);}
+  canvas{border-radius:12px;border:2px solid rgba(168,85,247,0.3);margin:12px 0;display:block;max-width:100%;}
+  .keys-guide{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:6px 0;}
+  .key{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);
+    border-bottom:3px solid rgba(255,255,255,0.3);border-radius:8px;padding:5px 12px;font-size:0.8rem;font-weight:800;}
+  #overlay{position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:12px;
+    background:rgba(10,22,40,0.9);border-radius:12px;text-align:center;padding:24px;}
+  #overlay h2{font-family:'Fredoka One';font-size:2rem;color:var(--purple);}
+  .score-big{font-family:'Fredoka One';font-size:3rem;color:var(--yellow);}
+  .btn{background:var(--purple);color:white;font-family:'Fredoka One';font-size:1.1rem;
+    border:none;padding:12px 32px;border-radius:40px;cursor:pointer;}
+  .wrap{position:relative;}
+  .mobile-ctrl{display:none;gap:6px;flex-direction:column;align-items:center;margin:8px 0;}
+  .ctrl-row{display:flex;gap:6px;}
+  .mbtn{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);
+    border-radius:10px;width:52px;height:52px;font-size:1.4rem;cursor:pointer;
+    color:white;display:flex;align-items:center;justify-content:center;user-select:none;touch-action:manipulation;}
+  .mbtn:active{background:rgba(168,85,247,0.4);}
+  @media(max-width:500px){.mobile-ctrl{display:flex;}}
+</style>
+</head>
+<body>
+<header>
+  <a href="../index.html" class="back">← Voltar</a>
+  <span class="htitle">⭐ Coletor WASD</span>
+  <div style="font-weight:800">⭐<span id="stars-disp" style="color:var(--yellow)">0</span>/10
+    &nbsp; ❤️<span id="lives-disp" style="color:#ff6b6b">3</span></div>
+</header>
+
+<div class="wrap">
+  <canvas id="c" width="500" height="400"></canvas>
+  <div id="overlay">
+    <h2>⭐ Coletor WASD</h2>
+    <p style="color:rgba(240,244,255,0.7)">Use <strong>W A S D</strong> para mover o personagem.<br>
+    Colete as estrelas e desvie dos inimigos roxos!</p>
+    <div style="display:flex;gap:8px;justify-content:center;margin:4px 0;">
+      <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span>
+    </div>
+    <button class="btn" onclick="startGame()">Jogar!</button>
+  </div>
+</div>
+
+<div class="keys-guide">
+  <span class="key">W Cima</span><span class="key">A Esq</span>
+  <span class="key">S Baixo</span><span class="key">D Dir</span>
+</div>
+<div class="mobile-ctrl">
+  <div class="ctrl-row"><button class="mbtn" id="mw">▲</button></div>
+  <div class="ctrl-row">
+    <button class="mbtn" id="ma">◀</button>
+    <button class="mbtn" id="ms">▼</button>
+    <button class="mbtn" id="md">▶</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W=500, H=400;
+const keys={};
+let player, stars, enemies, score, lives, raf, invincible=0, particles=[];
+
+document.addEventListener('keydown',e=>{ keys[e.code]=true; if(['KeyW','KeyA','KeyS','KeyD'].includes(e.code)) e.preventDefault(); });
+document.addEventListener('keyup',e=>{ keys[e.code]=false; });
+
+['mw','ma','ms','md'].forEach((id,i)=>{
+  const codes=['KeyW','KeyA','KeyS','KeyD'];
+  const btn=document.getElementById(id);
+  if(!btn) return;
+  btn.addEventListener('touchstart',e=>{ keys[codes[i]]=true; e.preventDefault(); },{passive:false});
+  btn.addEventListener('touchend',e=>{ keys[codes[i]]=false; e.preventDefault(); },{passive:false});
+  btn.addEventListener('mousedown',()=>keys[codes[i]]=true);
+  btn.addEventListener('mouseup',()=>keys[codes[i]]=false);
+});
+
+function spawnStar(){
+  return { x:30+Math.random()*(W-60), y:30+Math.random()*(H-60),
+    anim:Math.random()*Math.PI*2, collected:false };
+}
+
+function spawnEnemy(lvl){
+  const side = Math.floor(Math.random()*4);
+  let x,y,vx,vy;
+  const spd = 1.2+lvl*0.3;
+  if(side===0){x=Math.random()*W;y=-20;vx=(Math.random()-0.5)*spd;vy=spd;}
+  else if(side===1){x=W+20;y=Math.random()*H;vx=-spd;vy=(Math.random()-0.5)*spd;}
+  else if(side===2){x=Math.random()*W;y=H+20;vx=(Math.random()-0.5)*spd;vy=-spd;}
+  else{x=-20;y=Math.random()*H;vx=spd;vy=(Math.random()-0.5)*spd;}
+  return {x,y,vx,vy,r:15,anim:0};
+}
+
+function startGame(){
+  document.getElementById('overlay').style.display='none';
+  player={x:W/2,y:H/2,r:16,vx:0,vy:0,frame:0,frameT:0};
+  stars=[spawnStar(),spawnStar(),spawnStar()];
+  enemies=[];
+  score=0; lives=3; invincible=0; particles=[];
+  updateHUD();
+  if(raf) cancelAnimationFrame(raf);
+  loop();
+}
+
+function loop(){ update(); draw(); raf=requestAnimationFrame(loop); }
+
+function update(){
+  const spd=2.8;
+  player.vx = (keys['KeyD']?spd:0)-(keys['KeyA']?spd:0);
+  player.vy = (keys['KeyS']?spd:0)-(keys['KeyW']?spd:0);
+  if(player.vx&&player.vy){ player.vx*=0.707; player.vy*=0.707; }
+
+  player.x = Math.max(player.r, Math.min(W-player.r, player.x+player.vx));
+  player.y = Math.max(player.r, Math.min(H-player.r, player.y+player.vy));
+
+  // Spawn enemies periodically
+  if(Math.random() < 0.008+score*0.0002) enemies.push(spawnEnemy(Math.floor(score/30)));
+
+  // Move enemies toward player
+  enemies.forEach(e=>{
+    const dx=player.x-e.x, dy=player.y-e.y;
+    const d=Math.sqrt(dx*dx+dy*dy)||1;
+    const spd2=1.4+score*0.005;
+    e.x+=dx/d*spd2*0.4+e.vx*0.6;
+    e.y+=dy/d*spd2*0.4+e.vy*0.6;
+    e.anim+=0.05;
+  });
+  // Remove off-screen
+  enemies = enemies.filter(e=>e.x>-50&&e.x<W+50&&e.y>-50&&e.y<H+50);
+
+  // Collect stars
+  stars.forEach(s=>{
+    if(s.collected) return;
+    s.anim+=0.05;
+    const dx=player.x-s.x, dy=player.y-s.y;
+    if(dx*dx+dy*dy < (player.r+12)*(player.r+12)){
+      s.collected=true; score++;
+      spawnParticles(s.x,s.y,'#ffd84d',10);
+      updateHUD();
+      setTimeout(()=>{ stars = stars.filter(x=>!x.collected); stars.push(spawnStar()); },0);
+    }
+  });
+
+  // Enemy collision
+  if(invincible<=0){
+    enemies.forEach(e=>{
+      const dx=player.x-e.x, dy=player.y-e.y;
+      if(dx*dx+dy*dy < (player.r+e.r-4)*(player.r+e.r-4)){
+        lives--; invincible=90;
+        spawnParticles(player.x,player.y,'#ff4d6d',15);
+        updateHUD();
+        if(lives<=0){ setTimeout(gameOver,300); }
+      }
+    });
+  } else invincible--;
+
+  particles=particles.filter(p=>{ p.x+=p.vx; p.y+=p.vy; p.vy+=0.2; p.life--; return p.life>0; });
+
+  // Frame animation
+  player.frameT++;
+  if((Math.abs(player.vx)>0.1||Math.abs(player.vy)>0.1) && player.frameT%10===0)
+    player.frame=(player.frame+1)%2;
+}
+
+function spawnParticles(x,y,color,n){
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2,spd=1.5+Math.random()*3;
+    particles.push({x,y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd-1,color,life:25+Math.random()*10});
+  }
+}
+
+function draw(){
+  // BG
+  ctx.fillStyle='#0d1e36';
+  ctx.fillRect(0,0,W,H);
+
+  // Grid
+  ctx.strokeStyle='rgba(168,85,247,0.06)';
+  ctx.lineWidth=1;
+  for(let i=0;i<W;i+=40){ ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,H);ctx.stroke(); }
+  for(let i=0;i<H;i+=40){ ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(W,i);ctx.stroke(); }
+
+  // Stars
+  stars.forEach(s=>{
+    if(s.collected) return;
+    const bob=Math.sin(s.anim)*3;
+    ctx.save();
+    ctx.translate(s.x,s.y+bob);
+    const rot=s.anim*0.5;
+    ctx.rotate(rot);
+    drawStar(0,0,12,5,'#ffd84d','#e6a800');
+    ctx.restore();
+  });
+
+  // Enemies
+  enemies.forEach(e=>{
+    ctx.save();
+    ctx.translate(e.x,e.y);
+    ctx.rotate(e.anim);
+    ctx.shadowColor='#a855f7'; ctx.shadowBlur=10;
+    ctx.fillStyle='#a855f7';
+    ctx.beginPath();
+    for(let i=0;i<6;i++){
+      const a=i/6*Math.PI*2, r2=i%2===0?e.r:e.r*0.6;
+      i===0?ctx.moveTo(Math.cos(a)*r2,Math.sin(a)*r2):ctx.lineTo(Math.cos(a)*r2,Math.sin(a)*r2);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.shadowBlur=0;
+    ctx.fillStyle='rgba(255,255,255,0.6)';
+    ctx.beginPath(); ctx.arc(-4,-3,3,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(4,-3,3,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
+
+  // Player (fox head)
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  if(invincible>0) ctx.globalAlpha = Math.floor(invincible/6)%2===0?0.4:1;
+
+  // Shadow/glow
+  ctx.shadowColor='#ff8c42'; ctx.shadowBlur=16;
+  ctx.fillStyle='#ff8c42';
+  ctx.beginPath(); ctx.arc(0,2,player.r,0,Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0;
+
+  // Face details
+  ctx.fillStyle='#ffcf9e';
+  ctx.beginPath(); ctx.ellipse(0,4,10,8,0,0,Math.PI*2); ctx.fill();
+  // Ears
+  ctx.fillStyle='#ff6b00';
+  ctx.beginPath(); ctx.moveTo(-10,-10);ctx.lineTo(-16,-20);ctx.lineTo(-2,-12);ctx.fill();
+  ctx.beginPath(); ctx.moveTo(10,-10);ctx.lineTo(16,-20);ctx.lineTo(2,-12);ctx.fill();
+  // Eyes
+  ctx.fillStyle='#2a1a0a';
+  ctx.beginPath(); ctx.arc(-6,-3,3,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(6,-3,3,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='white';
+  ctx.beginPath(); ctx.arc(-5,-4,1,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(7,-4,1,0,Math.PI*2); ctx.fill();
+
+  ctx.globalAlpha=1;
+  ctx.restore();
+
+  // Particles
+  particles.forEach(p=>{
+    ctx.globalAlpha=p.life/35;
+    ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fill();
+  });
+  ctx.globalAlpha=1;
+
+  // Score HUD
+  ctx.fillStyle='rgba(0,0,0,0.5)';
+  ctx.beginPath(); ctx.roundRect(8,8,130,28,8); ctx.fill();
+  ctx.fillStyle='#ffd84d';
+  ctx.font='bold 13px Nunito';
+  ctx.fillText(`⭐ ${score} coletadas`, 18,27);
+}
+
+function drawStar(x,y,r,points,fill,stroke){
+  ctx.beginPath();
+  for(let i=0;i<points*2;i++){
+    const a=i/points*Math.PI-Math.PI/2, rad=i%2===0?r:r*0.45;
+    i===0?ctx.moveTo(x+Math.cos(a)*rad,y+Math.sin(a)*rad):ctx.lineTo(x+Math.cos(a)*rad,y+Math.sin(a)*rad);
+  }
+  ctx.closePath();
+  ctx.fillStyle=fill; ctx.fill();
+  ctx.strokeStyle=stroke; ctx.lineWidth=1.5; ctx.stroke();
+}
+
+function updateHUD(){
+  document.getElementById('stars-disp').textContent=score;
+  document.getElementById('lives-disp').textContent=lives;
+}
+
+function gameOver(){
+  cancelAnimationFrame(raf);
+  const ov=document.getElementById('overlay');
+  ov.innerHTML=`<h2>💀 Game Over!</h2>
+    <div class="score-big">${score}</div>
+    <p style="color:rgba(240,244,255,0.7)">estrelas coletadas! Continue treinando o WASD!</p>
+    <button class="btn" onclick="startGame()">Jogar de Novo</button>
+    <a href="../index.html" class="btn" style="background:rgba(255,255,255,0.1);color:#f0f4ff;text-decoration:none;margin-top:4px">← Voltar</a>`;
+  ov.style.display='flex';
+}
+</script>
+</body>
+</html>

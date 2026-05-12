@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Labirinto das Setas — Info Kid</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  :root{--navy:#0a1628;--green:#00c896;--yellow:#ffd84d;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--navy);font-family:'Nunito',sans-serif;color:#f0f4ff;
+    display:flex;flex-direction:column;align-items:center;min-height:100vh;}
+  header{width:100%;display:flex;align-items:center;justify-content:space-between;
+    padding:12px 20px;background:rgba(255,255,255,0.04);border-bottom:1px solid rgba(255,255,255,0.07);}
+  .back{text-decoration:none;color:var(--green);font-weight:800;}
+  .htitle{font-family:'Fredoka One';font-size:1.3rem;color:var(--green);}
+  canvas{border-radius:12px;border:2px solid rgba(0,200,150,0.25);margin:12px 0;display:block;max-width:100%;}
+  .keys-guide{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:6px 0;}
+  .key{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);
+    border-bottom:3px solid rgba(255,255,255,0.3);border-radius:8px;padding:5px 12px;font-size:0.8rem;font-weight:800;}
+  #overlay{position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:12px;
+    background:rgba(10,22,40,0.9);border-radius:12px;text-align:center;padding:24px;}
+  #overlay h2{font-family:'Fredoka One';font-size:2rem;color:var(--green);}
+  .btn{background:var(--green);color:#0a1628;font-family:'Fredoka One';font-size:1.1rem;
+    border:none;padding:12px 32px;border-radius:40px;cursor:pointer;}
+  .wrap{position:relative;}
+  .level-info{font-size:0.85rem;color:rgba(240,244,255,0.5);margin:4px 0;}
+  .mobile-ctrl{display:none;gap:6px;flex-direction:column;align-items:center;margin:8px 0;}
+  .ctrl-row{display:flex;gap:6px;}
+  .mbtn{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);
+    border-radius:10px;width:52px;height:52px;font-size:1.4rem;cursor:pointer;
+    color:white;display:flex;align-items:center;justify-content:center;user-select:none;touch-action:manipulation;}
+  .mbtn:active{background:rgba(255,255,255,0.25);}
+  @media(max-width:500px){.mobile-ctrl{display:flex;}}
+</style>
+</head>
+<body>
+<header>
+  <a href="../index.html" class="back">← Voltar</a>
+  <span class="htitle">🗺 Labirinto das Setas</span>
+  <div style="font-weight:800">Nível: <span id="lvl-disp" style="color:var(--yellow)">1</span></div>
+</header>
+
+<div class="level-info" id="level-info">Use ← ↑ → ↓ para mover a raposa até a saída 🚪</div>
+
+<div class="wrap">
+  <canvas id="c" width="420" height="420"></canvas>
+  <div id="overlay">
+    <h2>🗺 Labirinto das Setas</h2>
+    <p style="color:rgba(240,244,255,0.7)">Use as teclas <strong>← ↑ → ↓</strong> para guiar a raposa 🦊<br>
+    Chegue até a saída em cada fase!</p>
+    <button class="btn" onclick="startGame()">Começar!</button>
+  </div>
+</div>
+
+<div class="keys-guide">
+  <span class="key">↑</span><span class="key">←</span><span class="key">↓</span><span class="key">→</span>
+</div>
+<div class="mobile-ctrl">
+  <div class="ctrl-row"><button class="mbtn" onclick="move(0,-1)">▲</button></div>
+  <div class="ctrl-row">
+    <button class="mbtn" onclick="move(-1,0)">◀</button>
+    <button class="mbtn" onclick="move(0,1)">▼</button>
+    <button class="mbtn" onclick="move(1,0)">▶</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const CELL = 28, COLS = 15, ROWS = 15;
+let player, level = 0, particles = [];
+
+// Mazes: 0=path, 1=wall, S=start, E=exit
+const MAZES = [
+  // Level 1 — simples
+  [
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
+    [1,0,1,0,1,0,1,1,1,1,1,0,1,0,1],
+    [1,0,1,0,0,0,0,0,0,0,1,0,1,0,1],
+    [1,0,1,1,1,1,1,0,1,0,1,0,1,0,1],
+    [1,0,0,0,0,0,1,0,1,0,0,0,1,0,1],
+    [1,1,1,0,1,0,1,0,1,1,1,1,1,0,1],
+    [1,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
+    [1,0,1,1,1,1,1,1,1,0,1,1,1,0,1],
+    [1,0,0,0,0,0,0,0,1,0,1,0,0,0,1],
+    [1,1,1,1,1,0,1,0,1,0,1,0,1,1,1],
+    [1,0,0,0,1,0,1,0,0,0,1,0,0,0,1],
+    [1,0,1,0,0,0,1,1,1,0,1,1,1,0,1],
+    [1,0,1,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  ],
+  // Level 2 — médio
+  [
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,0,0,0,1,0,0,0,1,0,0,0,1],
+    [1,0,1,1,1,0,1,0,1,0,1,0,1,0,1],
+    [1,0,1,0,0,0,0,0,1,0,0,0,1,0,1],
+    [1,0,1,0,1,1,1,1,1,1,1,1,1,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+    [1,1,1,0,1,0,1,1,1,0,1,0,1,0,1],
+    [1,0,1,0,1,0,0,0,1,0,1,0,0,0,1],
+    [1,0,0,0,1,1,1,0,1,0,1,1,1,0,1],
+    [1,0,1,1,1,0,0,0,0,0,0,0,0,0,1],
+    [1,0,0,0,0,0,1,1,1,1,1,0,1,1,1],
+    [1,1,1,1,1,0,1,0,0,0,1,0,0,0,1],
+    [1,0,0,0,1,0,0,0,1,0,1,1,1,0,1],
+    [1,0,0,0,0,0,1,0,0,0,0,0,0,0,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  ],
+  // Level 3 — difícil
+  [
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,1,0,0,0,0,0,1,0,0,0,0,0,1],
+    [1,0,1,0,1,1,1,0,1,0,1,1,1,0,1],
+    [1,0,0,0,1,0,0,0,0,0,1,0,1,0,1],
+    [1,1,1,0,1,0,1,1,1,1,1,0,0,0,1],
+    [1,0,1,0,0,0,1,0,0,0,0,0,1,1,1],
+    [1,0,1,1,1,0,1,0,1,1,1,0,1,0,1],
+    [1,0,0,0,1,0,0,0,1,0,1,0,0,0,1],
+    [1,0,1,0,1,1,1,1,1,0,1,1,1,0,1],
+    [1,0,1,0,0,0,0,0,0,0,0,0,1,0,1],
+    [1,0,1,1,1,0,1,1,1,1,1,0,1,0,1],
+    [1,0,0,0,1,0,0,0,0,0,1,0,0,0,1],
+    [1,1,1,0,1,1,1,0,1,0,1,1,1,0,1],
+    [1,0,0,0,0,0,0,0,1,0,0,0,0,0,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  ]
+];
+
+const STARTS = [[1,1],[1,1],[1,1]];
+const EXITS  = [[13,13],[13,13],[13,13]];
+
+document.addEventListener('keydown', e=>{
+  const map = {ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]};
+  if(map[e.code]){ e.preventDefault(); move(...map[e.code]); }
+});
+
+function move(dx,dy){
+  if(!player) return;
+  const nx = player.x+dx, ny = player.y+dy;
+  const maze = MAZES[level];
+  if(maze[ny] && maze[ny][nx]===0){
+    player.px=player.x; player.py=player.y;
+    player.x=nx; player.y=ny;
+    player.animT=0;
+    // Check exit
+    const [ex,ey] = EXITS[level];
+    if(nx===ex && ny===ey){ nextLevel(); return; }
+  }
+  draw();
+}
+
+function startGame(){
+  document.getElementById('overlay').style.display='none';
+  level=0; loadLevel();
+}
+
+function loadLevel(){
+  const [sx,sy] = STARTS[level];
+  player = {x:sx,y:sy,px:sx,py:sy,animT:1};
+  particles=[];
+  document.getElementById('lvl-disp').textContent = level+1;
+  draw();
+}
+
+function nextLevel(){
+  spawnParticles((EXITS[level][0])*CELL+CELL/2, (EXITS[level][1])*CELL+CELL/2, '#00c896', 20);
+  setTimeout(()=>{
+    level++;
+    if(level >= MAZES.length){ showWin(); return; }
+    loadLevel();
+  }, 800);
+}
+
+function spawnParticles(x,y,color,n){
+  for(let i=0;i<n;i++){
+    const a=Math.random()*Math.PI*2, spd=1+Math.random()*4;
+    particles.push({x,y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd-1,color,life:30+Math.random()*10});
+  }
+}
+
+function draw(){
+  ctx.fillStyle='#0a1628';
+  ctx.fillRect(0,0,420,420);
+  const maze = MAZES[level];
+  const [ex,ey] = EXITS[level];
+
+  for(let row=0;row<ROWS;row++){
+    for(let col=0;col<COLS;col++){
+      const x=col*CELL+7, y=row*CELL+7;
+      if(maze[row][col]===1){
+        // Wall
+        ctx.fillStyle='#1a3a5c';
+        ctx.fillRect(x,y,CELL,CELL);
+        ctx.fillStyle='rgba(255,255,255,0.05)';
+        ctx.fillRect(x,y,CELL,2);
+        ctx.fillStyle='rgba(0,0,0,0.2)';
+        ctx.fillRect(x,y+CELL-2,CELL,2);
+      } else {
+        ctx.fillStyle='#0d2347';
+        ctx.fillRect(x,y,CELL,CELL);
+      }
+    }
+  }
+
+  // Exit flag
+  ctx.save();
+  ctx.translate(ex*CELL+7+CELL/2, ey*CELL+7+CELL/2);
+  const pulse = 0.95+Math.sin(Date.now()*0.005)*0.05;
+  ctx.scale(pulse,pulse);
+  ctx.fillStyle='#00c896';
+  ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='white'; ctx.font='12px Arial'; ctx.textAlign='center';
+  ctx.fillText('🚪',0,4);
+  ctx.restore();
+
+  // Player (fox)
+  const t = Math.min(1, (player.animT||1));
+  const px = (player.px + (player.x-player.px)*t)*CELL+7+CELL/2;
+  const py = (player.py + (player.y-player.py)*t)*CELL+7+CELL/2;
+  if(player.animT<1) player.animT+=0.2;
+
+  ctx.save();
+  ctx.translate(px,py);
+  // Glow
+  ctx.shadowColor='#ff8c42'; ctx.shadowBlur=12;
+  ctx.fillStyle='#ff8c42';
+  ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0;
+  ctx.fillStyle='white'; ctx.font='13px Arial'; ctx.textAlign='center';
+  ctx.fillText('🦊',0,5);
+  ctx.restore();
+
+  // Particles
+  particles = particles.filter(p=>{
+    p.x+=p.vx; p.y+=p.vy; p.vy+=0.15; p.life--;
+    ctx.globalAlpha=p.life/40;
+    ctx.fillStyle=p.color;
+    ctx.beginPath(); ctx.arc(p.x+7,p.y+7,3,0,Math.PI*2); ctx.fill();
+    return p.life>0;
+  });
+  ctx.globalAlpha=1;
+
+  requestAnimationFrame(()=>{ if(player) draw(); });
+}
+
+function showWin(){
+  const ov = document.getElementById('overlay');
+  ov.innerHTML=`<h2>🎉 Parabéns!</h2>
+    <p style="color:rgba(240,244,255,0.7)">Você completou todos os labirintos!<br>As teclas de setas não têm mais segredos para você!</p>
+    <button class="btn" onclick="level=0;startGame()">Jogar de Novo</button>
+    <a href="../index.html" class="btn" style="background:rgba(255,255,255,0.1);color:#f0f4ff;text-decoration:none;margin-top:4px">← Voltar</a>`;
+  ov.style.display='flex';
+}
+</script>
+</body>
+</html>
